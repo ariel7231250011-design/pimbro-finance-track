@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Enums
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// Tabel User (Pemilik akun/aplikasi)
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relasi
+  employees      Employee[]
+  categories     Category[]
+  items          Item[]
+  transactions   Transaction[]
+  salaryPayments SalaryPayment[]
+  accounts       Account[] // <– relasi balik ke Account
+
+  @@map("users")
+}
+
+// Tabel Employee (Karyawan)
+model Employee {
+  id           String         @id @default(cuid())
+  userId       String
+  employeeCode String?        @unique
+  name         String
+  position     String?
+  baseSalary   Decimal        @db.Decimal(15, 2)
+  status       EmployeeStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  salaryPayments SalaryPayment[]
+
+  @@map("employees")
+}
+
+// Tabel Category
+model Category {
+  id          String          @id @default(cuid())
+  userId      String
+  name        String
+  type        TransactionType
+  description String?
+  isSystem    Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, name])
+  @@map("categories")
+}
+
+// Tabel Item (Barang)
+model Item {
+  id               String   @id @default(cuid())
+  userId           String
+  name             String
+  sku              String?  @unique
+  defaultBuyPrice  Decimal? @db.Decimal(15, 2)
+  defaultSellPrice Decimal? @db.Decimal(15, 2)
+  unit             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("items")
+}
+
+// Tabel Transaction (ledger utama)
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      String
+  categoryId  String
+  employeeId  String?
+  itemId      String?
+  accountId   String? // <– relasi ke Account (opsional)
+  type        TransactionType
+  amount      Decimal         @db.Decimal(15, 2)
+  quantity    Decimal?        @db.Decimal(10, 2)
+  date        DateTime        @default(now())
+  description String?
+  reference   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  employee      Employee?      @relation(fields: [employeeId], references: [id])
+  item          Item?          @relation(fields: [itemId], references: [id])
+  salaryPayment SalaryPayment?
+  account       Account?       @relation(fields: [accountId], references: [id])
+  attachments   Attachment[] // <– relasi balik dari Attachment
+
+  @@map("transactions")
+}
+
+// Tabel SalaryPayment
+model SalaryPayment {
+  id            String        @id @default(cuid())
+  userId        String
+  employeeId    String
+  transactionId String        @unique
+  periodStart   DateTime
+  periodEnd     DateTime
+  grossSalary   Decimal       @db.Decimal(15, 2)
+  deductions    Decimal       @default(0) @db.Decimal(15, 2)
+  netSalary     Decimal       @db.Decimal(15, 2)
+  status        PaymentStatus @default(PENDING)
+  paidAt        DateTime?
+  notes         String?
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@map("salary_payments")
+}
+
+// Tabel Attachment (bukti transaksi)
+model Attachment {
+  id            String   @id @default(cuid())
+  transactionId String
+  fileName      String
+  filePath      String
+  fileSize      Int
+  mimeType      String
+  uploadedAt    DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@map("attachments")
+}
+
+// Tabel Account (multi kas/bank)
+model Account {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  type      String // CASH, BANK, EWALLET, dll
+  balance   Decimal  @default(0) @db.Decimal(15, 2)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[] // <– relasi ke Transaction.account
+
+  @@map("accounts")
+}
